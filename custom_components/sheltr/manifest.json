@@ -1,0 +1,13 @@
+{
+  "domain": "sheltr",
+  "name": "Sheltr Cloud",
+  "codeowners": ["@filippobenozzi"],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://github.com/filippobenozzi/sheltr-homeassistant",
+  "integration_type": "hub",
+  "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/filippobenozzi/sheltr-homeassistant/issues",
+  "requirements": [],
+  "version": "1.0.0"
+}

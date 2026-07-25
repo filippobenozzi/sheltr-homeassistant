@@ -1,0 +1,91 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Sheltr Cloud",
+        "description": "Connect Home Assistant to your Sheltr Cloud portal. Use the instance username and password (recommended: the token is renewed automatically) or paste an existing instance token.",
+        "data": {
+          "url": "Portal URL",
+          "instance_id": "Instance ID",
+          "username": "Username",
+          "password": "Password",
+          "token": "Instance token (optional)",
+          "verify_ssl": "Verify the SSL certificate"
+        },
+        "data_description": {
+          "url": "For example http://192.168.1.10:8080",
+          "instance_id": "The instance ID used in /control/<id>",
+          "token": "Only needed if you do not provide username and password"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Sheltr Cloud authentication",
+        "description": "The token for instance {instance_id} is no longer valid. Enter the credentials again or paste a new token.",
+        "data": {
+          "username": "Username",
+          "password": "Password",
+          "token": "Instance token (optional)"
+        }
+      },
+      "reconfigure": {
+        "title": "Sheltr Cloud settings",
+        "description": "Update the portal address or the credentials used for this instance.",
+        "data": {
+          "url": "Portal URL",
+          "instance_id": "Instance ID",
+          "username": "Username",
+          "password": "Password",
+          "token": "Instance token (optional)",
+          "verify_ssl": "Verify the SSL certificate"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Cannot reach the portal at the given address.",
+      "invalid_auth": "Invalid credentials or token, or no access to this instance.",
+      "instance_not_found": "No instance with this ID exists on the portal.",
+      "missing_auth": "Provide username and password, or an instance token.",
+      "unknown": "Unexpected error, check the Home Assistant log."
+    },
+    "abort": {
+      "already_configured": "This instance is already configured.",
+      "reauth_successful": "Authentication updated.",
+      "reconfigure_successful": "Settings updated.",
+      "wrong_instance": "The credentials belong to a different instance."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Sheltr Cloud options",
+        "data": {
+          "scan_interval": "Status read interval",
+          "active_poll_interval": "Active module polling interval",
+          "poll_after_command": "Verify the module state after every command"
+        },
+        "data_description": {
+          "scan_interval": "How often the portal state is read (no traffic towards the device).",
+          "active_poll_interval": "How often the modules are actually polled over MQTT. Use 0 to disable it and rely on the Refresh button (recommended with data saver on an IoT SIM).",
+          "poll_after_command": "More reliable, but it adds one poll for every command."
+        }
+      }
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "device_online": {
+        "name": "Device"
+      }
+    },
+    "sensor": {
+      "last_seen": {
+        "name": "Last contact"
+      }
+    },
+    "button": {
+      "refresh": {
+        "name": "Refresh state"
+      }
+    }
+  }
+}

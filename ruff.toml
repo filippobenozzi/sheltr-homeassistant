@@ -1,0 +1,20 @@
+# Configurazione allineata alle convenzioni di Home Assistant Core.
+target-version = "py312"
+line-length = 100
+
+[lint]
+select = ["F", "E", "W", "I", "UP", "B", "SIM", "RET", "D"]
+ignore = [
+  "D203", # 1 blank line before class docstring (in conflitto con D211)
+  "D213", # multi-line summary second line (in conflitto con D212)
+  "D401", # imperative mood: le docstring sono in italiano
+  "E501", # lunghezza riga gestita dal formatter
+]
+
+[lint.isort]
+known-first-party = ["homeassistant", "custom_components", "tests"]
+force-sort-within-sections = true
+combine-as-imports = true
+
+[lint.pydocstyle]
+convention = "pep257"
