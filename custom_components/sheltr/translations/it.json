@@ -3,89 +3,27 @@
     "step": {
       "user": {
         "title": "Sheltr Cloud",
-        "description": "Collega Home Assistant al portale Sheltr Cloud. Usa username e password dell'istanza (consigliato: il token viene rinnovato da solo) oppure incolla un token istanza già ottenuto.",
+        "description": "Indirizzo del portale Sheltr e un token: quello dell'impianto (impianto → Impostazioni → API dell'impianto) oppure uno personale (Profilo → Token API).",
         "data": {
-          "url": "URL del portale",
-          "instance_id": "ID impianto",
-          "username": "Username",
-          "password": "Password",
-          "token": "Token istanza (opzionale)",
-          "verify_ssl": "Verifica il certificato SSL"
-        },
-        "data_description": {
-          "url": "Ad esempio http://192.168.1.10:8080",
-          "instance_id": "L'ID istanza usato in /control/<id>",
-          "token": "Serve solo se non inserisci username e password"
+          "url": "Indirizzo del portale",
+          "token": "Token API"
         }
       },
       "reauth_confirm": {
-        "title": "Autenticazione Sheltr Cloud",
-        "description": "Il token dell'impianto {instance_id} non è più valido. Inserisci di nuovo le credenziali o incolla un nuovo token.",
+        "title": "Nuovo token",
+        "description": "Il token non vale più (revocato o rigenerato): creane uno nuovo nel portale.",
         "data": {
-          "username": "Username",
-          "password": "Password",
-          "token": "Token istanza (opzionale)"
-        }
-      },
-      "reconfigure": {
-        "title": "Impostazioni Sheltr Cloud",
-        "description": "Aggiorna indirizzo del portale o credenziali usate per questo impianto.",
-        "data": {
-          "url": "URL del portale",
-          "instance_id": "ID impianto",
-          "username": "Username",
-          "password": "Password",
-          "token": "Token istanza (opzionale)",
-          "verify_ssl": "Verifica il certificato SSL"
+          "token": "Token API"
         }
       }
     },
     "error": {
-      "cannot_connect": "Impossibile raggiungere il portale all'indirizzo indicato.",
-      "invalid_auth": "Credenziali o token non validi, oppure nessun permesso su questo impianto.",
-      "instance_not_found": "Sul portale non esiste un impianto con questo ID.",
-      "missing_auth": "Inserisci username e password oppure un token istanza.",
-      "unknown": "Errore imprevisto, controlla il log di Home Assistant."
+      "invalid_auth": "Token non valido o revocato.",
+      "cannot_connect": "Il portale non risponde."
     },
     "abort": {
-      "already_configured": "Questo impianto è già configurato.",
-      "reauth_successful": "Autenticazione aggiornata.",
-      "reconfigure_successful": "Impostazioni aggiornate.",
-      "wrong_instance": "Le credenziali appartengono a un altro impianto."
-    }
-  },
-  "options": {
-    "step": {
-      "init": {
-        "title": "Opzioni Sheltr Cloud",
-        "data": {
-          "scan_interval": "Intervallo di lettura dello stato",
-          "active_poll_interval": "Intervallo di polling attivo dei moduli",
-          "poll_after_command": "Verifica lo stato del modulo dopo ogni comando"
-        },
-        "data_description": {
-          "scan_interval": "Ogni quanto viene letto lo stato dal portale (nessun traffico verso il dispositivo).",
-          "active_poll_interval": "Ogni quanto i moduli vengono interrogati davvero via MQTT. Usa 0 per disattivarlo e affidarti al pulsante Aggiorna (consigliato con il risparmio dati su SIM IoT).",
-          "poll_after_command": "Più affidabile, ma aggiunge un polling per ogni comando."
-        }
-      }
-    }
-  },
-  "entity": {
-    "binary_sensor": {
-      "device_online": {
-        "name": "Dispositivo"
-      }
-    },
-    "sensor": {
-      "last_seen": {
-        "name": "Ultimo contatto"
-      }
-    },
-    "button": {
-      "refresh": {
-        "name": "Aggiorna stato"
-      }
+      "already_configured": "Questo token è già configurato.",
+      "reauth_successful": "Token aggiornato."
     }
   }
 }

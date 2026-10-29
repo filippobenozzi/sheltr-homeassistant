@@ -1,177 +1,92 @@
-"""Test del flusso di configurazione."""
+"""Test della configurazione da interfaccia."""
 
 from __future__ import annotations
 
-import pytest
+import aiohttp
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from pytest_homeassistant_custom_component.test_util.aiohttp import AiohttpClientMocker
 
-from custom_components.sheltr.const import DOMAIN
+from custom_components.sheltr.const import CONF_TOKEN, CONF_URL, DOMAIN
 from homeassistant.config_entries import SOURCE_USER
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
-from .const import (
-    BASE_URL,
-    CONFIG_DATA,
-    INSTANCE,
-    INSTANCE_ID,
-    INSTANCE_URL,
-    LOGIN_URL,
-    STATUS_URL,
-    TOKEN,
-    build_status,
-)
+from .const import BASE_URL, ME, ME_URL, TOKEN
 
 
-async def test_user_flow_with_credentials(
+async def test_user_flow_creates_entry(
     hass: HomeAssistant, mock_portal: AiohttpClientMocker
 ) -> None:
-    """Username e password creano la voce e ricavano il token."""
+    """Indirizzo senza schema e con la barra finale: si normalizza e si prova il token."""
     result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": SOURCE_USER})
     assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
 
-    result = await hass.config_entries.flow.async_configure(result["flow_id"], CONFIG_DATA)
-    await hass.async_block_till_done()
-
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_URL: "cloud.example.com/", CONF_TOKEN: f" {TOKEN} "}
+    )
     assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "Casa Demo"
-    assert result["data"]["url"] == BASE_URL
-    assert result["data"]["instance_id"] == INSTANCE_ID
-    assert result["result"].unique_id == f"{BASE_URL}::{INSTANCE_ID}"
+    assert result["title"] == "Sheltr (API · Casa Demo)"
+    assert result["data"] == {CONF_URL: BASE_URL, CONF_TOKEN: TOKEN}
+    assert result["result"].unique_id == f"{BASE_URL}|{ME['id']}"
+    # Il token viaggia come Authorization: Bearer.
+    assert aioclient_mock_header(mock_portal) == f"Bearer {TOKEN}"
 
 
-async def test_user_flow_with_token(
+def aioclient_mock_header(mock: AiohttpClientMocker) -> str | None:
+    """Intestazione Authorization dell'ultima chiamata."""
+    headers = mock.mock_calls[-1][3] or {}
+    return headers.get("Authorization")
+
+
+async def test_user_flow_invalid_token(
     hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
 ) -> None:
-    """Il solo token istanza è sufficiente."""
-    aioclient_mock.get(INSTANCE_URL, json={"instance": INSTANCE})
-    aioclient_mock.get(STATUS_URL, json=build_status())
-
+    """Token revocato o inventato: errore sul campo, si resta nel modulo."""
+    aioclient_mock.get(ME_URL, status=401, json={"error": "Token non valido"})
     result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": SOURCE_USER})
     result = await hass.config_entries.flow.async_configure(
-        result["flow_id"],
-        {"url": BASE_URL, "instance_id": INSTANCE_ID, "token": TOKEN},
+        result["flow_id"], {CONF_URL: BASE_URL, CONF_TOKEN: "shltr_sbagliato"}
     )
-    await hass.async_block_till_done()
-
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"]["token"] == TOKEN
-    assert "username" not in result["data"]
-
-
-async def test_user_flow_missing_auth(hass: HomeAssistant) -> None:
-    """Senza credenziali né token il form segnala l'errore."""
-    result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": SOURCE_USER})
-    result = await hass.config_entries.flow.async_configure(
-        result["flow_id"], {"url": BASE_URL, "instance_id": INSTANCE_ID}
-    )
-
     assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "missing_auth"}
-
-
-@pytest.mark.parametrize(
-    ("status", "expected"),
-    [(401, "invalid_auth"), (404, "instance_not_found"), (500, "unknown")],
-)
-async def test_user_flow_errors(
-    hass: HomeAssistant,
-    aioclient_mock: AiohttpClientMocker,
-    status: int,
-    expected: str,
-) -> None:
-    """Gli errori del portale diventano messaggi del form."""
-    aioclient_mock.post(LOGIN_URL, status=status, json={"error": "ko"})
-
-    result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": SOURCE_USER})
-    result = await hass.config_entries.flow.async_configure(result["flow_id"], CONFIG_DATA)
-
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": expected}
+    assert result["errors"] == {"base": "invalid_auth"}
 
 
 async def test_user_flow_cannot_connect(
     hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
 ) -> None:
     """Portale irraggiungibile."""
-    aioclient_mock.post(LOGIN_URL, exc=TimeoutError())
-
+    aioclient_mock.get(ME_URL, exc=aiohttp.ClientError())
     result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": SOURCE_USER})
-    result = await hass.config_entries.flow.async_configure(result["flow_id"], CONFIG_DATA)
-
-    assert result["type"] is FlowResultType.FORM
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_URL: BASE_URL, CONF_TOKEN: TOKEN}
+    )
     assert result["errors"] == {"base": "cannot_connect"}
 
 
-async def test_user_flow_restricted_instance(
-    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
-) -> None:
-    """La vista minimale del portale significa token senza permessi."""
-    aioclient_mock.post(LOGIN_URL, json={"ok": True, "token": TOKEN})
-    aioclient_mock.get(
-        INSTANCE_URL, json={"instance": {**INSTANCE, "restricted": True, "boards": []}}
-    )
-
-    result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": SOURCE_USER})
-    result = await hass.config_entries.flow.async_configure(result["flow_id"], CONFIG_DATA)
-
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "invalid_auth"}
-
-
-async def test_duplicate_entry_aborts(
+async def test_user_flow_already_configured(
     hass: HomeAssistant, mock_portal: AiohttpClientMocker, config_entry: MockConfigEntry
 ) -> None:
-    """Lo stesso impianto non può essere aggiunto due volte."""
+    """Lo stesso token due volte no."""
     config_entry.add_to_hass(hass)
-
     result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": SOURCE_USER})
-    result = await hass.config_entries.flow.async_configure(result["flow_id"], CONFIG_DATA)
-
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_URL: BASE_URL, CONF_TOKEN: TOKEN}
+    )
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "already_configured"
 
 
-async def test_reauth_flow(
-    hass: HomeAssistant, mock_portal: AiohttpClientMocker, config_entry: MockConfigEntry
+async def test_reauth_replaces_token(
+    hass: HomeAssistant, setup_integration: MockConfigEntry
 ) -> None:
-    """La riautenticazione aggiorna le credenziali della voce."""
-    config_entry.add_to_hass(hass)
-    result = await config_entry.start_reauth_flow(hass)
-
-    assert result["type"] is FlowResultType.FORM
+    """Token rigenerato nel portale: si aggiorna la voce senza rifarla."""
+    result = await setup_integration.start_reauth_flow(hass)
     assert result["step_id"] == "reauth_confirm"
-
     result = await hass.config_entries.flow.async_configure(
-        result["flow_id"], {"username": "filippo", "password": "nuova"}
+        result["flow_id"], {CONF_TOKEN: "shltr_nuovo"}
     )
-    await hass.async_block_till_done()
-
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "reauth_successful"
-    assert config_entry.data["password"] == "nuova"
-
-
-async def test_options_flow(hass: HomeAssistant, setup_integration: MockConfigEntry) -> None:
-    """Le opzioni di polling vengono salvate come interi."""
-    result = await hass.config_entries.options.async_init(setup_integration.entry_id)
-    assert result["type"] is FlowResultType.FORM
-
-    result = await hass.config_entries.options.async_configure(
-        result["flow_id"],
-        {
-            "scan_interval": 60,
-            "active_poll_interval": 0,
-            "poll_after_command": True,
-        },
-    )
+    assert setup_integration.data[CONF_TOKEN] == "shltr_nuovo"
+    # La voce si ricarica col token nuovo.
     await hass.async_block_till_done()
-
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert setup_integration.options == {
-        "scan_interval": 60,
-        "active_poll_interval": 0,
-        "poll_after_command": True,
-    }

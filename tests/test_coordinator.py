@@ -1,82 +1,81 @@
-"""Test della logica di polling del coordinator."""
+"""Test degli aggiornamenti in tempo reale."""
 
 from __future__ import annotations
 
-from datetime import timedelta
+from unittest.mock import MagicMock
 
-from freezegun.api import FrozenDateTimeFactory
-from pytest_homeassistant_custom_component.common import (
-    MockConfigEntry,
-    async_fire_time_changed,
-)
-from pytest_homeassistant_custom_component.test_util.aiohttp import AiohttpClientMocker
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+from custom_components.sheltr.api import SheltrClient
+from custom_components.sheltr.const import DOMAIN
+from homeassistant.components.light import DOMAIN as LIGHT_DOMAIN
+from homeassistant.const import STATE_OFF, STATE_ON, STATE_UNAVAILABLE
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 
-from .const import STATUS_URL, build_status
-
-
-def _refresh_calls(mock: AiohttpClientMocker) -> list[str]:
-    return [
-        call[1].query.get("refresh", "0")
-        for call in mock.mock_calls
-        if str(call[1]).startswith(STATUS_URL)
-    ]
+from .const import EMPTY_STATE
 
 
-async def test_first_refresh_is_cheap(
-    hass: HomeAssistant,
-    setup_integration: MockConfigEntry,
-    mock_portal: AiohttpClientMocker,
+def light_id(hass: HomeAssistant) -> str:
+    """La luce "Lampadario"."""
+    found = er.async_get(hass).async_get_entity_id(LIGHT_DOMAIN, DOMAIN, "dr154-channels-b1-c1")
+    assert found is not None
+    return found
+
+
+async def test_state_and_device_events(
+    hass: HomeAssistant, setup_integration: MockConfigEntry
 ) -> None:
-    """Il primo aggiornamento non interroga i moduli: il setup resta rapido."""
-    assert _refresh_calls(mock_portal) == ["0"]
-
-
-async def test_active_poll_follows_interval(
-    hass: HomeAssistant,
-    setup_integration: MockConfigEntry,
-    mock_portal: AiohttpClientMocker,
-    freezer: FrozenDateTimeFactory,
-) -> None:
-    """Dopo il primo aggiornamento parte il polling attivo dei moduli."""
-    mock_portal.clear_requests()
-    mock_portal.get(STATUS_URL, json=build_status())
-
-    freezer.tick(timedelta(seconds=31))
-    async_fire_time_changed(hass)
-    await hass.async_block_till_done()
-
-    assert _refresh_calls(mock_portal) == ["1"]
-
-    # Entro l'intervallo di polling attivo (300 s) si torna alla lettura leggera.
-    freezer.tick(timedelta(seconds=31))
-    async_fire_time_changed(hass)
-    await hass.async_block_till_done()
-
-    assert _refresh_calls(mock_portal) == ["1", "0"]
-
-
-async def test_active_poll_disabled_by_option(
-    hass: HomeAssistant,
-    mock_portal: AiohttpClientMocker,
-    config_entry: MockConfigEntry,
-    freezer: FrozenDateTimeFactory,
-) -> None:
-    """Con intervallo 0 il polling attivo avviene solo su richiesta."""
-    config_entry.add_to_hass(hass)
-    hass.config_entries.async_update_entry(
-        config_entry, options={"scan_interval": 30, "active_poll_interval": 0}
+    """Un evento "state" cambia lo stato; un gateway offline rende le entità non disponibili."""
+    coordinator = setup_integration.runtime_data
+    coordinator.handle_event(
+        "state", {"channels": [{"channelId": 11, "state": {**EMPTY_STATE, "isOn": False}}]}
     )
-    assert await hass.config_entries.async_setup(config_entry.entry_id)
     await hass.async_block_till_done()
+    assert hass.states.get(light_id(hass)).state == STATE_OFF
 
-    mock_portal.clear_requests()
-    mock_portal.get(STATUS_URL, json=build_status())
+    coordinator.handle_event("device", {"id": "dr154", "online": False})
+    await hass.async_block_till_done()
+    assert hass.states.get(light_id(hass)).state == STATE_UNAVAILABLE
 
-    for _ in range(3):
-        freezer.tick(timedelta(seconds=31))
-        async_fire_time_changed(hass)
-        await hass.async_block_till_done()
+    coordinator.handle_event("device", {"id": "dr154", "online": True})
+    coordinator.handle_event(
+        "state", {"channels": [{"channelId": 11, "state": {**EMPTY_STATE, "isOn": True}}]}
+    )
+    await hass.async_block_till_done()
+    assert hass.states.get(light_id(hass)).state == STATE_ON
 
-    assert _refresh_calls(mock_portal) == ["0", "0", "0"]
+
+class FakeResponse:
+    """Risposta SSE finta: righe come arrivano dall'hub."""
+
+    def __init__(self, lines: list[str]) -> None:
+        """Le righe del flusso."""
+        self.content = self._iterate(lines)
+
+    @staticmethod
+    async def _iterate(lines: list[str]):
+        for line in lines:
+            yield (line + "\n").encode()
+
+
+async def test_server_sent_events_are_parsed() -> None:
+    """Eventi `data:` su una o più righe, separati da una riga vuota; il resto si ignora."""
+    received: list[tuple[str, dict]] = []
+    response = FakeResponse(
+        [
+            ": commento",
+            "id: 1",
+            'data: {"type": "state", "data": {"channels": []}}',
+            "",
+            "data: {",
+            'data: "type": "device", "data": {"id": "dr154", "online": true}}',
+            "",
+            "data: non json",
+            "",
+        ]
+    )
+    await SheltrClient._read_events(
+        MagicMock(content=response.content), lambda k, d: received.append((k, d))
+    )
+    assert received == [("state", {"channels": []}), ("device", {"id": "dr154", "online": True})]

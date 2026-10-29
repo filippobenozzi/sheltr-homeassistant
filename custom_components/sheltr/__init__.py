@@ -1,69 +1,49 @@
-"""Integrazione Home Assistant per Sheltr Cloud."""
+"""Sheltr Cloud: luci, dimmer, tapparelle, termostati, sequenze e ingressi degli impianti Sheltr."""
 
 from __future__ import annotations
 
-from homeassistant.const import (
-    CONF_PASSWORD,
-    CONF_TOKEN,
-    CONF_URL,
-    CONF_USERNAME,
-    CONF_VERIFY_SSL,
-)
+import logging
+
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
-from homeassistant.helpers import device_registry
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .api import SheltrAuthError, SheltrClient, SheltrError
-from .const import CONF_INSTANCE_ID, PLATFORMS
-from .coordinator import SheltrConfigEntry, SheltrCoordinator
-from .entity import instance_device_info
+from .api import SheltrClient
+from .const import CONF_TOKEN, CONF_URL, PLATFORMS
+from .coordinator import SheltrCoordinator
+
+_LOGGER = logging.getLogger(__name__)
+
+type SheltrConfigEntry = ConfigEntry[SheltrCoordinator]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: SheltrConfigEntry) -> bool:
-    """Configura una voce: client, coordinator e piattaforme."""
-    session = async_get_clientsession(hass, verify_ssl=entry.data.get(CONF_VERIFY_SSL, True))
+    """Legge gli impianti del token, crea le entità e ascolta gli aggiornamenti."""
     client = SheltrClient(
-        session,
-        entry.data[CONF_URL],
-        entry.data[CONF_INSTANCE_ID],
-        token=entry.data.get(CONF_TOKEN),
-        username=entry.data.get(CONF_USERNAME),
-        password=entry.data.get(CONF_PASSWORD),
+        async_get_clientsession(hass), entry.data[CONF_URL], entry.data[CONF_TOKEN]
     )
-
-    try:
-        await client.async_ensure_token()
-    except SheltrAuthError as err:
-        raise ConfigEntryAuthFailed(str(err)) from err
-    except SheltrError as err:
-        raise ConfigEntryNotReady(str(err)) from err
-
-    coordinator = SheltrCoordinator(hass, entry, client)
-    try:
-        await coordinator.async_load_instance()
-    except SheltrError as err:
-        raise ConfigEntryNotReady(str(err)) from err
-
+    coordinator = SheltrCoordinator(hass, client)
     await coordinator.async_config_entry_first_refresh()
-
-    # Registra subito il dispositivo «impianto»: le schede lo referenziano con via_device.
-    device_registry.async_get(hass).async_get_or_create(
-        config_entry_id=entry.entry_id,
-        **instance_device_info(coordinator),
-    )
-
     entry.runtime_data = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-    entry.async_on_unload(entry.add_update_listener(async_reload_entry))
+    coordinator.start_listening()
+    return True
+
+
+async def async_migrate_entry(hass: HomeAssistant, entry: SheltrConfigEntry) -> bool:
+    """Le voci della versione 1 (portale Sheltr precedente) non si convertono."""
+    if entry.version < 2:
+        _LOGGER.error(
+            "%s: configurazione per il portale Sheltr precedente (ID impianto e credenziali). "
+            "Rimuovi l'integrazione e aggiungila di nuovo con l'indirizzo del portale e un token "
+            "(impianto → Impostazioni → API dell'impianto)",
+            entry.title,
+        )
+        return False
     return True
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: SheltrConfigEntry) -> bool:
-    """Scarica la voce e le sue piattaforme."""
+    """Chiude il collegamento in tempo reale e toglie le entità."""
+    await entry.runtime_data.stop_listening()
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
-
-
-async def async_reload_entry(hass: HomeAssistant, entry: SheltrConfigEntry) -> None:
-    """Ricarica la voce quando cambiano le opzioni."""
-    await hass.config_entries.async_reload(entry.entry_id)

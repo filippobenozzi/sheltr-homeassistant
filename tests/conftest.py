@@ -1,28 +1,19 @@
-"""Fixture comuni ai test dell'integrazione Sheltr."""
+"""Fixture comuni ai test dell'integrazione Sheltr Cloud."""
 
 from __future__ import annotations
 
 from collections.abc import Generator
 from typing import Any
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from pytest_homeassistant_custom_component.test_util.aiohttp import AiohttpClientMocker
 
-from custom_components.sheltr.const import DOMAIN
+from custom_components.sheltr.const import CONF_TOKEN, CONF_URL, DOMAIN
 from homeassistant.core import HomeAssistant
 
-from .const import (
-    BASE_URL,
-    CONFIG_DATA,
-    INSTANCE,
-    INSTANCE_ID,
-    INSTANCE_URL,
-    LOGIN_URL,
-    STATUS_URL,
-    TOKEN,
-    build_status,
-)
+from .const import BASE_URL, HOME_ID, HOME_URL, HOMES_URL, ME, ME_URL, TOKEN, home
 
 
 @pytest.fixture(autouse=True)
@@ -33,12 +24,19 @@ def auto_enable_custom_integrations(
     yield
 
 
+@pytest.fixture(autouse=True)
+def no_realtime() -> Generator[AsyncMock, None, None]:
+    """Niente flusso in tempo reale nei test: gli eventi si mandano a mano."""
+    with patch("custom_components.sheltr.api.SheltrClient.listen", new=AsyncMock()) as listen:
+        yield listen
+
+
 @pytest.fixture
 def mock_portal(aioclient_mock: AiohttpClientMocker) -> AiohttpClientMocker:
-    """Portale Sheltr simulato con login, istanza e stato."""
-    aioclient_mock.post(LOGIN_URL, json={"ok": True, "token": TOKEN, "expiresAt": None})
-    aioclient_mock.get(INSTANCE_URL, json={"instance": INSTANCE})
-    aioclient_mock.get(STATUS_URL, json=build_status())
+    """Portale con un impianto, visto col token dell'impianto."""
+    aioclient_mock.get(ME_URL, json=ME)
+    aioclient_mock.get(HOMES_URL, json=[{"id": HOME_ID, "name": "Casa Demo"}])
+    aioclient_mock.get(HOME_URL, json=home())
     return aioclient_mock
 
 
@@ -47,9 +45,10 @@ def config_entry() -> MockConfigEntry:
     """Voce di configurazione pronta all'uso."""
     return MockConfigEntry(
         domain=DOMAIN,
-        title="Casa Demo",
-        data=CONFIG_DATA,
-        unique_id=f"{BASE_URL}::{INSTANCE_ID}",
+        version=2,
+        title="Sheltr (API · Casa Demo)",
+        data={CONF_URL: BASE_URL, CONF_TOKEN: TOKEN},
+        unique_id=f"{BASE_URL}|{ME['id']}",
     )
 
 
@@ -59,7 +58,7 @@ async def setup_integration(
     mock_portal: AiohttpClientMocker,
     config_entry: MockConfigEntry,
 ) -> MockConfigEntry:
-    """Configura l'integrazione con il portale simulato."""
+    """Integrazione configurata e caricata."""
     config_entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(config_entry.entry_id)
     await hass.async_block_till_done()

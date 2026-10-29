@@ -1,4 +1,4 @@
-"""Test di importazione delle schede e dei comandi."""
+"""Test delle entità: stato letto dal portale e comandi mandati."""
 
 from __future__ import annotations
 
@@ -8,361 +8,141 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from pytest_homeassistant_custom_component.test_util.aiohttp import AiohttpClientMocker
 
 from custom_components.sheltr.const import DOMAIN
-from homeassistant.components.button import SERVICE_PRESS
+from homeassistant.components.binary_sensor import DOMAIN as BINARY_SENSOR_DOMAIN
+from homeassistant.components.button import DOMAIN as BUTTON_DOMAIN, SERVICE_PRESS
 from homeassistant.components.climate import (
+    ATTR_CURRENT_TEMPERATURE,
     ATTR_HVAC_ACTION,
+    ATTR_HVAC_MODE,
     ATTR_TEMPERATURE,
     DOMAIN as CLIMATE_DOMAIN,
     SERVICE_SET_HVAC_MODE,
     SERVICE_SET_TEMPERATURE,
+    HVACAction,
     HVACMode,
 )
-from homeassistant.components.cover import DOMAIN as COVER_DOMAIN
+from homeassistant.components.cover import DOMAIN as COVER_DOMAIN, CoverState
 from homeassistant.components.light import ATTR_BRIGHTNESS, DOMAIN as LIGHT_DOMAIN
 from homeassistant.const import (
     ATTR_ENTITY_ID,
-    SERVICE_CLOSE_COVER,
+    SERVICE_OPEN_COVER,
     SERVICE_TURN_OFF,
     SERVICE_TURN_ON,
     STATE_OFF,
     STATE_ON,
-    STATE_UNKNOWN,
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 
-from .const import (
-    DIMMERS_URL,
-    INSTANCE_ID,
-    LIGHTS_URL,
-    SHUTTERS_URL,
-    STATUS_URL,
-    THERMOSTATS_URL,
-    build_status,
-)
+from .const import BASE_URL
 
 
-def _entity_id(hass: HomeAssistant, platform: str, channel_id: str) -> str:
-    entity_id = er.async_get(hass).async_get_entity_id(
-        platform, DOMAIN, f"{INSTANCE_ID}_{channel_id}"
-    )
-    assert entity_id is not None, f"entità mancante per {channel_id}"
-    return entity_id
+def entity_id(hass: HomeAssistant, platform: str, unique_id: str) -> str:
+    """Entity id dall'unique id (deviceId-collection-key)."""
+    found = er.async_get(hass).async_get_entity_id(platform, DOMAIN, unique_id)
+    assert found is not None, unique_id
+    return found
 
 
-def _last_call(mock: AiohttpClientMocker, url: str) -> dict[str, Any]:
-    calls = [call for call in mock.mock_calls if str(call[1]) == url]
-    assert calls, f"nessuna chiamata a {url}"
-    return calls[-1][2]
+def commands(mock: AiohttpClientMocker, path: str) -> list[Any]:
+    """Corpi delle POST mandate a un percorso."""
+    return [
+        call[2] for call in mock.mock_calls if call[0] == "POST" and str(call[1]) == BASE_URL + path
+    ]
 
 
-def _arm(mock: AiohttpClientMocker, url: str, payload: dict[str, Any]) -> None:
-    """Registra la risposta a un comando.
-
-    Il mocker usa sempre la prima risposta registrata per una URL, quindi va
-    azzerato prima di riarmarlo con un payload diverso.
-    """
-    mock.clear_requests()
-    mock.get(STATUS_URL, json=build_status())
-    mock.post(url, json=payload)
+async def call(hass: HomeAssistant, domain: str, service: str, target: str, **data: Any) -> None:
+    """Chiama un servizio su un'entità e aspetta."""
+    await hass.services.async_call(domain, service, {ATTR_ENTITY_ID: target, **data}, blocking=True)
 
 
-async def test_boards_are_imported(hass: HomeAssistant, setup_integration: MockConfigEntry) -> None:
-    """Ogni canale delle schede diventa un'entità del tipo corretto."""
-    light = hass.states.get(_entity_id(hass, LIGHT_DOMAIN, "board-1-c1"))
-    assert light is not None
-    assert light.state == STATE_OFF
-    assert light.attributes["friendly_name"] == "Scheda Luci Luce cucina"
-    assert light.attributes["address"] == 1
-    assert light.attributes["room"] == "Cucina"
+async def test_entities_and_device(hass: HomeAssistant, setup_integration: MockConfigEntry) -> None:
+    """Ogni canale diventa un'entità del dispositivo del suo gateway, nella stanza del portale."""
+    light = entity_id(hass, LIGHT_DOMAIN, "dr154-channels-b1-c1")
+    assert hass.states.get(light).state == STATE_ON
+    assert hass.states.get(light).attributes["friendly_name"] == "Casa Demo · Quadro Lampadario"
 
-    cover = hass.states.get(_entity_id(hass, COVER_DOMAIN, "board-2-c1"))
-    assert cover is not None
-    assert cover.state == "open"
-    assert cover.attributes["assumed_state"] is True
-
-    dimmer = hass.states.get(_entity_id(hass, LIGHT_DOMAIN, "board-3-c1"))
-    assert dimmer is not None
-    assert dimmer.state == STATE_OFF
-    assert dimmer.attributes["supported_color_modes"] == ["brightness"]
-
-    climate = hass.states.get(_entity_id(hass, CLIMATE_DOMAIN, "board-4-c1"))
-    assert climate is not None
-    assert climate.state == HVACMode.HEAT
-    assert climate.attributes["current_temperature"] == 21.5
-    assert climate.attributes["temperature"] == 20.0
-    assert climate.attributes[ATTR_HVAC_ACTION] == "idle"
-
-    temperature = hass.states.get(_entity_id(hass, "sensor", "board-4-c1_temperature"))
-    assert temperature is not None
-    assert temperature.state == "21.5"
-
-
-async def test_devices_are_created_per_board(
-    hass: HomeAssistant, setup_integration: MockConfigEntry
-) -> None:
-    """Ogni scheda è un dispositivo collegato all'impianto."""
     registry = dr.async_get(hass)
-    hub = registry.async_get_device(identifiers={(DOMAIN, INSTANCE_ID)})
-    assert hub is not None
-    assert hub.name == "Casa Demo"
-    assert hub.model == "Sheltr 4G / DR154"
-
-    board = registry.async_get_device(identifiers={(DOMAIN, f"{INSTANCE_ID}::board-1")})
-    assert board is not None
-    assert board.name == "Scheda Luci"
-    assert board.via_device_id == hub.id
-    assert board.model == "Scheda luci · indirizzo 1"
+    devices = dr.async_entries_for_config_entry(registry, setup_integration.entry_id)
+    device = next(d for d in devices if (DOMAIN, "dr154") in d.identifiers)
+    assert (device.manufacturer, device.model, device.sw_version) == (
+        "Sheltr",
+        "USR DR154",
+        "V1.3.04",
+    )
 
 
-async def test_instance_entities(hass: HomeAssistant, setup_integration: MockConfigEntry) -> None:
-    """L'impianto espone connettività, ultimo contatto e pulsante di refresh."""
-    assert hass.states.get(_entity_id(hass, "binary_sensor", "online")).state == STATE_ON
-    assert hass.states.get(_entity_id(hass, "sensor", "last_seen")) is not None
-    assert hass.states.get(_entity_id(hass, "button", "refresh")) is not None
-
-
-async def test_light_turn_on(
-    hass: HomeAssistant,
-    setup_integration: MockConfigEntry,
-    mock_portal: AiohttpClientMocker,
+async def test_light_and_dimmer(
+    hass: HomeAssistant, setup_integration: MockConfigEntry, aioclient_mock: AiohttpClientMocker
 ) -> None:
-    """L'accensione invia il comando e aggiorna subito lo stato."""
-    _arm(
-        mock_portal,
-        LIGHTS_URL,
-        {"ok": True, "sent": [{"id": "board-1-c1", "action": "on", "isOn": True}]},
-    )
-    entity_id = _entity_id(hass, LIGHT_DOMAIN, "board-1-c1")
+    """Luce on/off; dimmer coi livelli 0-9 del bus su 0-255."""
+    aioclient_mock.post(f"{BASE_URL}/api/channels/11/command", json={"id": "c1", "status": "sent"})
+    aioclient_mock.post(f"{BASE_URL}/api/channels/12/command", json={"id": "c2", "status": "sent"})
+    light = entity_id(hass, LIGHT_DOMAIN, "dr154-channels-b1-c1")
+    dimmer = entity_id(hass, LIGHT_DOMAIN, "dr154-channels-b2-c1")
 
-    await hass.services.async_call(
-        LIGHT_DOMAIN, SERVICE_TURN_ON, {ATTR_ENTITY_ID: entity_id}, blocking=True
-    )
-    await hass.async_block_till_done()
+    await call(hass, LIGHT_DOMAIN, SERVICE_TURN_OFF, light)
+    assert commands(aioclient_mock, "/api/channels/11/command") == [{"action": "off"}]
 
-    assert _last_call(mock_portal, LIGHTS_URL) == {
-        "lightId": "board-1-c1",
-        "action": "on",
-    }
-    assert hass.states.get(entity_id).state == STATE_ON
+    assert hass.states.get(dimmer).attributes[ATTR_BRIGHTNESS] == round(5 * 255 / 9)
+    await call(hass, LIGHT_DOMAIN, SERVICE_TURN_ON, dimmer, brightness=255)
+    await call(hass, LIGHT_DOMAIN, SERVICE_TURN_ON, dimmer, brightness=1)
+    assert commands(aioclient_mock, "/api/channels/12/command") == [
+        {"action": "set", "level": 9},
+        {"action": "set", "level": 1},
+    ]
 
 
-async def test_dimmer_brightness(
-    hass: HomeAssistant,
-    setup_integration: MockConfigEntry,
-    mock_portal: AiohttpClientMocker,
+async def test_shutter(
+    hass: HomeAssistant, setup_integration: MockConfigEntry, aioclient_mock: AiohttpClientMocker
 ) -> None:
-    """La luminosità 0..255 viene convertita nel livello 0..9 del protocollo."""
-    _arm(
-        mock_portal,
-        DIMMERS_URL,
-        {
-            "ok": True,
-            "sent": [{"id": "board-3-c1", "action": "set", "level": 5, "isOn": True}],
-        },
-    )
-    entity_id = _entity_id(hass, LIGHT_DOMAIN, "board-3-c1")
-
-    await hass.services.async_call(
-        LIGHT_DOMAIN,
-        SERVICE_TURN_ON,
-        {ATTR_ENTITY_ID: entity_id, ATTR_BRIGHTNESS: 142},
-        blocking=True,
-    )
-    await hass.async_block_till_done()
-
-    assert _last_call(mock_portal, DIMMERS_URL) == {
-        "dimmerId": "board-3-c1",
-        "action": "set",
-        "level": 5,
-    }
-    state = hass.states.get(entity_id)
-    assert state.state == STATE_ON
-    assert state.attributes[ATTR_BRIGHTNESS] == 142
+    """Tapparella: chiusa se l'ultimo movimento è in giù; su, giù, stop."""
+    aioclient_mock.post(f"{BASE_URL}/api/channels/13/command", json={"id": "c3", "status": "sent"})
+    cover = entity_id(hass, COVER_DOMAIN, "dr154-channels-b3-c1")
+    assert hass.states.get(cover).state == CoverState.CLOSED
+    await call(hass, COVER_DOMAIN, SERVICE_OPEN_COVER, cover)
+    assert commands(aioclient_mock, "/api/channels/13/command") == [{"action": "up"}]
 
 
-async def test_cover_close(
-    hass: HomeAssistant,
-    setup_integration: MockConfigEntry,
-    mock_portal: AiohttpClientMocker,
+async def test_thermostat(
+    hass: HomeAssistant, setup_integration: MockConfigEntry, aioclient_mock: AiohttpClientMocker
 ) -> None:
-    """La chiusura invia l'azione `down`."""
-    _arm(
-        mock_portal,
-        SHUTTERS_URL,
-        {"ok": True, "sent": [{"id": "board-2-c1", "action": "down"}]},
+    """Termostato: temperatura, setpoint, inverno = riscaldamento; setpoint e spegnimento."""
+    aioclient_mock.post(f"{BASE_URL}/api/channels/14/command", json={"id": "c4", "status": "sent"})
+    climate = entity_id(hass, CLIMATE_DOMAIN, "dr154-channels-b4-c1")
+    state = hass.states.get(climate)
+    assert state.state == HVACMode.HEAT
+    assert state.attributes[ATTR_CURRENT_TEMPERATURE] == 20.3
+    assert state.attributes[ATTR_TEMPERATURE] == 21.5
+    assert state.attributes[ATTR_HVAC_ACTION] == HVACAction.HEATING
+
+    await call(hass, CLIMATE_DOMAIN, SERVICE_SET_TEMPERATURE, climate, temperature=22)
+    await call(
+        hass, CLIMATE_DOMAIN, SERVICE_SET_HVAC_MODE, climate, **{ATTR_HVAC_MODE: HVACMode.OFF}
     )
-    entity_id = _entity_id(hass, COVER_DOMAIN, "board-2-c1")
-
-    await hass.services.async_call(
-        COVER_DOMAIN, SERVICE_CLOSE_COVER, {ATTR_ENTITY_ID: entity_id}, blocking=True
+    await call(
+        hass, CLIMATE_DOMAIN, SERVICE_SET_HVAC_MODE, climate, **{ATTR_HVAC_MODE: HVACMode.COOL}
     )
-    await hass.async_block_till_done()
-
-    assert _last_call(mock_portal, SHUTTERS_URL) == {
-        "shutterId": "board-2-c1",
-        "action": "down",
-    }
-    assert hass.states.get(entity_id).state == "closed"
+    assert commands(aioclient_mock, "/api/channels/14/command") == [
+        {"setpoint": 22.0},
+        {"action": "off"},
+        {"mode": "summer"},
+    ]
 
 
-async def test_climate_commands(
-    hass: HomeAssistant,
-    setup_integration: MockConfigEntry,
-    mock_portal: AiohttpClientMocker,
+async def test_sequence_input_and_connectivity(
+    hass: HomeAssistant, setup_integration: MockConfigEntry, aioclient_mock: AiohttpClientMocker
 ) -> None:
-    """Setpoint, stagione e spegnimento del termostato."""
-    entity_id = _entity_id(hass, CLIMATE_DOMAIN, "board-4-c1")
+    """Sequenza come pulsante, ingresso e collegamento del gateway come sensori."""
+    aioclient_mock.post(f"{BASE_URL}/api/sequences/21/run", json={"ok": True})
+    button = entity_id(hass, BUTTON_DOMAIN, "dr154-sequences-s1")
+    await call(hass, BUTTON_DOMAIN, SERVICE_PRESS, button)
+    assert commands(aioclient_mock, "/api/sequences/21/run") == [{}]
 
-    _arm(
-        mock_portal,
-        THERMOSTATS_URL,
-        {
-            "ok": True,
-            "sent": [
-                {
-                    "id": "board-4-c1",
-                    "setpoint": 22.5,
-                    "mode": "winter",
-                    "isOn": True,
-                    "isActive": True,
-                }
-            ],
-        },
+    assert (
+        hass.states.get(entity_id(hass, BINARY_SENSOR_DOMAIN, "dr154-inputs-i1")).state == STATE_OFF
     )
-    await hass.services.async_call(
-        CLIMATE_DOMAIN,
-        SERVICE_SET_TEMPERATURE,
-        {ATTR_ENTITY_ID: entity_id, ATTR_TEMPERATURE: 22.5},
-        blocking=True,
+    assert (
+        hass.states.get(entity_id(hass, BINARY_SENSOR_DOMAIN, "dr154-connectivity")).state
+        == STATE_ON
     )
-    await hass.async_block_till_done()
-
-    assert _last_call(mock_portal, THERMOSTATS_URL) == {
-        "thermostatId": "board-4-c1",
-        "setpoint": 22.5,
-    }
-    state = hass.states.get(entity_id)
-    assert state.attributes["temperature"] == 22.5
-    assert state.attributes[ATTR_HVAC_ACTION] == "heating"
-
-    _arm(
-        mock_portal,
-        THERMOSTATS_URL,
-        {
-            "ok": True,
-            "sent": [
-                {
-                    "id": "board-4-c1",
-                    "setpoint": 22.5,
-                    "mode": "summer",
-                    "isOn": True,
-                    "isActive": False,
-                }
-            ],
-        },
-    )
-    await hass.services.async_call(
-        CLIMATE_DOMAIN,
-        SERVICE_SET_HVAC_MODE,
-        {ATTR_ENTITY_ID: entity_id, "hvac_mode": HVACMode.COOL},
-        blocking=True,
-    )
-    await hass.async_block_till_done()
-
-    assert _last_call(mock_portal, THERMOSTATS_URL) == {
-        "thermostatId": "board-4-c1",
-        "mode": "summer",
-        "power": True,
-    }
-    assert hass.states.get(entity_id).state == HVACMode.COOL
-
-    _arm(
-        mock_portal,
-        THERMOSTATS_URL,
-        {"ok": True, "sent": [{"id": "board-4-c1", "isOn": False}]},
-    )
-    await hass.services.async_call(
-        CLIMATE_DOMAIN, SERVICE_TURN_OFF, {ATTR_ENTITY_ID: entity_id}, blocking=True
-    )
-    await hass.async_block_till_done()
-
-    assert _last_call(mock_portal, THERMOSTATS_URL) == {
-        "thermostatId": "board-4-c1",
-        "power": False,
-    }
-    assert hass.states.get(entity_id).state == HVACMode.OFF
-
-
-async def test_refresh_button_polls_modules(
-    hass: HomeAssistant,
-    setup_integration: MockConfigEntry,
-    mock_portal: AiohttpClientMocker,
-) -> None:
-    """Il pulsante forza il polling attivo (`refresh=1`)."""
-    mock_portal.clear_requests()
-    status = build_status()
-    status["rooms"][0]["lights"][0]["isOn"] = True
-    mock_portal.get(STATUS_URL, json=status)
-
-    await hass.services.async_call(
-        "button",
-        SERVICE_PRESS,
-        {ATTR_ENTITY_ID: _entity_id(hass, "button", "refresh")},
-        blocking=True,
-    )
-    await hass.async_block_till_done()
-
-    assert any(
-        str(call[1]).startswith(STATUS_URL) and call[1].query.get("refresh") == "1"
-        for call in mock_portal.mock_calls
-    )
-    assert hass.states.get(_entity_id(hass, LIGHT_DOMAIN, "board-1-c1")).state == STATE_ON
-
-
-async def test_new_board_is_added_later(
-    hass: HomeAssistant,
-    setup_integration: MockConfigEntry,
-    mock_portal: AiohttpClientMocker,
-) -> None:
-    """Una scheda aggiunta nel portale compare al successivo aggiornamento."""
-    status = build_status()
-    status["rooms"][0]["lights"].append(
-        {
-            "id": "board-5-c1",
-            "boardId": "board-5",
-            "boardName": "Scheda Luci Piano 1",
-            "address": 5,
-            "channel": 1,
-            "kind": "light",
-            "name": "Luce studio",
-            "room": "Cucina",
-            "isOn": None,
-        }
-    )
-    mock_portal.clear_requests()
-    mock_portal.get(STATUS_URL, json=status)
-
-    coordinator = setup_integration.runtime_data
-    await coordinator.async_refresh()
-    await hass.async_block_till_done()
-
-    assert hass.states.get(_entity_id(hass, LIGHT_DOMAIN, "board-5-c1")).state == STATE_UNKNOWN
-
-
-async def test_entities_unavailable_when_device_offline(
-    hass: HomeAssistant,
-    setup_integration: MockConfigEntry,
-    mock_portal: AiohttpClientMocker,
-) -> None:
-    """Dispositivo offline: i canali diventano non disponibili."""
-    status = build_status()
-    status["device"]["online"] = False
-    mock_portal.clear_requests()
-    mock_portal.get(STATUS_URL, json=status)
-
-    await setup_integration.runtime_data.async_refresh()
-    await hass.async_block_till_done()
-
-    assert hass.states.get(_entity_id(hass, LIGHT_DOMAIN, "board-1-c1")).state == "unavailable"
-    assert hass.states.get(_entity_id(hass, "binary_sensor", "online")).state == STATE_OFF

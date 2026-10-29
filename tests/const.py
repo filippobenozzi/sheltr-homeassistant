@@ -1,125 +1,97 @@
-"""Payload di esempio del portale Sheltr Cloud usati nei test."""
+"""Dati di prova: un portale con un impianto, come lo descrivono le API di Sheltr Cloud."""
 
 from __future__ import annotations
 
+import copy
 from typing import Any
 
-BASE_URL = "http://sheltr.local:8080"
-INSTANCE_ID = "casa-demo"
-TOKEN = "token-di-prova"
+BASE_URL = "https://cloud.example.com"
+TOKEN = "shltr_prova"
+HOME_ID = "casa1"
 
-CONFIG_DATA = {
-    "url": BASE_URL,
-    "instance_id": INSTANCE_ID,
-    "username": "filippo",
-    "password": "segreta",
-    "verify_ssl": True,
-}
+ME_URL = f"{BASE_URL}/api/me"
+HOMES_URL = f"{BASE_URL}/api/homes"
+HOME_URL = f"{BASE_URL}/api/homes/{HOME_ID}"
+REALTIME_URL = f"{BASE_URL}/api/me/realtime"
 
-LOGIN_URL = f"{BASE_URL}/api/instances/{INSTANCE_ID}/auth/login"
-INSTANCE_URL = f"{BASE_URL}/api/instances/{INSTANCE_ID}"
-STATUS_URL = f"{INSTANCE_URL}/status"
-POLL_URL = f"{INSTANCE_URL}/poll"
-LIGHTS_URL = f"{INSTANCE_URL}/lights/command"
-DIMMERS_URL = f"{INSTANCE_URL}/dimmers/command"
-SHUTTERS_URL = f"{INSTANCE_URL}/shutters/command"
-THERMOSTATS_URL = f"{INSTANCE_URL}/thermostats/command"
+ME = {"id": "u-api", "name": "API · Casa Demo", "role": "user"}
 
-INSTANCE: dict[str, Any] = {
-    "id": INSTANCE_ID,
-    "name": "Casa Demo",
-    "deviceType": "sheltr_4g",
-    "device": {"type": "sheltr_4g", "label": "Sheltr 4G / DR154"},
-    "protocolVersion": "1.6",
-    "dataSaver": False,
-    "heartbeatMinutes": 30,
-    "boards": [
-        {"id": "board-1", "name": "Scheda Luci", "address": 1, "kind": "light"},
-        {"id": "board-2", "name": "Scheda Tapparelle", "address": 2, "kind": "shutter"},
-        {"id": "board-3", "name": "Scheda Dimmer", "address": 3, "kind": "dimmer"},
-        {"id": "board-4", "name": "Scheda Termostato", "address": 4, "kind": "thermostat"},
-    ],
-    "mqtt": {"configTopic": f"/{INSTANCE_ID}/config"},
-    "auth": {"username": "", "passwordConfigured": True},
-    "updatedAt": "2026-07-25T09:00:00+00:00",
-    "controlUrl": f"/control/{INSTANCE_ID}",
+EMPTY_STATE: dict[str, Any] = {
+    "isOn": None,
+    "level": None,
+    "setpoint": None,
+    "mode": None,
+    "temperature": None,
+    "active": None,
+    "shutterAction": None,
+    "updatedAt": None,
 }
 
 
-def _channel(
-    board_id: str, board_name: str, address: int, kind: str, channel: int, name: str, room: str
-) -> dict[str, Any]:
+def channel(item_id: int, key: str, kind: str, name: str, **state: Any) -> dict[str, Any]:
+    """Un canale del modulo `key` col suo stato."""
     return {
-        "id": f"{board_id}-c{channel}",
-        "boardId": board_id,
-        "boardName": board_name,
-        "address": address,
-        "channel": channel,
+        "id": item_id,
+        "key": key,
+        "deviceId": "dr154",
+        "boardId": 1,
         "kind": kind,
+        "number": 1,
         "name": name,
-        "room": room,
-        "notifyOnChange": False,
+        "roomId": 1,
+        "online": True,
+        "state": {**EMPTY_STATE, **state},
+        "command": None,
     }
 
 
-def build_status(**overrides: Any) -> dict[str, Any]:
-    """Costruisce una risposta `/status` con una scheda per tipo."""
-    light = _channel("board-1", "Scheda Luci", 1, "light", 1, "Luce cucina", "Cucina")
-    light["isOn"] = False
-
-    shutter = _channel(
-        "board-2", "Scheda Tapparelle", 2, "shutter", 1, "Tapparella cucina", "Cucina"
-    )
-    shutter["action"] = "up"
-
-    dimmer = _channel("board-3", "Scheda Dimmer", 3, "dimmer", 1, "Dimmer salotto", "Salotto")
-    dimmer["level"] = 0
-    dimmer["isOn"] = False
-
-    thermostat = _channel(
-        "board-4", "Scheda Termostato", 4, "thermostat", 1, "Termostato salotto", "Salotto"
-    )
-    thermostat.update(
-        {"temperature": 21.5, "setpoint": 20.0, "mode": "winter", "isOn": True, "isActive": False}
-    )
-
-    status: dict[str, Any] = {
-        "instanceId": INSTANCE_ID,
-        "updatedAt": "2026-07-25T10:00:00+00:00",
-        "refreshErrors": [],
-        "commandTopic": f"/{INSTANCE_ID}/cmd",
-        "responseTopic": f"/{INSTANCE_ID}/status",
-        "payloadFormat": "frame_bytes",
-        "dataSaver": False,
-        "device": {
+HOME: dict[str, Any] = {
+    "id": HOME_ID,
+    "name": "Casa Demo",
+    "rooms": [{"id": 1, "name": "Sala"}],
+    "devices": [
+        {
+            "id": "dr154",
+            "name": "Quadro",
+            "type": "usr",
+            "claimed": True,
             "online": True,
-            "lastSeenAt": "2026-07-25T09:59:00+00:00",
-            "heartbeatMinutes": 30,
-        },
-        "rooms": [
-            {
-                "name": "Cucina",
-                "color": "#f9d5d3",
-                "lights": [light],
-                "dimmers": [],
-                "shutters": [shutter],
-                "thermostats": [],
-            },
-            {
-                "name": "Salotto",
-                "color": "#d4e5f7",
-                "lights": [],
-                "dimmers": [dimmer],
-                "shutters": [],
-                "thermostats": [thermostat],
-            },
-        ],
-        "roomColors": {},
-        "roomPalette": [],
-        "boards": INSTANCE["boards"],
-    }
-    status.update(overrides)
-    return status
+            "firmware": "V1.3.04",
+            "mode": "api",
+        }
+    ],
+    "channels": [
+        channel(11, "b1-c1", "light", "Lampadario", isOn=True),
+        channel(12, "b2-c1", "dimmer", "Abat-jour", level=5),
+        channel(13, "b3-c1", "shutter", "Tapparella", shutterAction="down"),
+        channel(
+            14,
+            "b4-c1",
+            "thermostat",
+            "Termostato",
+            isOn=True,
+            setpoint=21.5,
+            temperature=20.3,
+            mode="winter",
+            active=True,
+        ),
+    ],
+    "sequences": [
+        {"id": 21, "key": "s1", "deviceId": "dr154", "name": "Buonanotte", "roomId": None}
+    ],
+    "inputs": [
+        {
+            "id": 31,
+            "key": "i1",
+            "deviceId": "dr154",
+            "name": "Porta",
+            "roomId": None,
+            "active": False,
+        }
+    ],
+}
 
 
-STATUS = build_status()
+def home() -> dict[str, Any]:
+    """Una copia fresca dell'impianto (i test la modificano)."""
+    return copy.deepcopy(HOME)

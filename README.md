@@ -1,26 +1,29 @@
 # Sheltr Cloud per Home Assistant
 
-Integrazione custom che collega Home Assistant a un portale [Sheltr Cloud](https://github.com/filippobenozzi/sheltr-cloud)
-(`iotsheltr`). Bastano **URL del portale**, **ID impianto** e le credenziali (o un **token istanza**):
-l'integrazione importa automaticamente tutte le schede configurate — `light`, `dimmer`, `shutter`,
-`thermostat` — e le rende comandabili come entità native.
+Integrazione custom che porta in Home Assistant gli impianti di un portale
+[Sheltr Cloud](https://github.com/filippobenozzi/sheltr-cloud): luci, dimmer, tapparelle, termostati,
+sequenze e ingressi, comandabili come entità native e aggiornati **in tempo reale**.
+
+Bastano l'**indirizzo del portale** e un **token**.
+
+> **Versione 2.** Funziona col portale Sheltr Cloud 2 (token API). Le configurazioni fatte con la
+> versione 1.x (portale precedente, con ID impianto e credenziali) non si convertono: rimuovi
+> l'integrazione e aggiungila di nuovo con indirizzo e token.
 
 ## Cosa viene creato
 
-| Scheda Sheltr | Entità Home Assistant | Comandi |
+| Sheltr | Home Assistant | Comandi |
 |---|---|---|
-| `light` | `light.*` (on/off) | accendi, spegni |
-| `dimmer` | `light.*` con luminosità | accendi, spegni, livello 0..9 mappato su 0..255 |
-| `shutter` | `cover.*` (tapparella) | su, giù, stop |
-| `thermostat` | `climate.*` + `sensor.*` temperatura | setpoint 5..30 °C (passo 0,5), inverno → riscaldamento, estate → raffrescamento, on/off |
-| impianto | `binary_sensor.*` connessione, `sensor.*` ultimo contatto, `button.*` aggiorna stato | polling attivo dei moduli |
+| Luce | `light` (on/off) | accendi, spegni |
+| Dimmer | `light` con luminosità | livelli 0–9 del bus su 0–255 |
+| Tapparella | `cover` (stato presunto) | su, giù, stop: il bus non dà la posizione |
+| Termostato | `climate` | setpoint 5–30 °C a mezzi gradi, inverno = riscaldamento, estate = raffrescamento, spento |
+| Sequenza (Sheltr ESP) | `button` | avvia |
+| Ingresso (Sheltr ESP) | `binary_sensor` | — |
+| Gateway (DR154, Sheltr ESP) | dispositivo, con un sensore di **collegamento** | — |
 
-Ogni scheda diventa un **dispositivo** di Home Assistant, agganciato al dispositivo «impianto»
-(hub) che porta il nome dell'istanza. Nomi dei canali e stanze sono quelli configurati nel portale;
-gli attributi di ogni entità riportano `board_id`, `address`, `channel` e `room` del protocollo 1.6.
-
-Le schede aggiunte nel portale dopo la configurazione vengono importate al successivo
-aggiornamento, senza dover ricaricare l'integrazione.
+Ogni gateway diventa un dispositivo di Home Assistant (*Impianto · Gateway*), con la stanza suggerita
+dal portale. I moduli aggiunti nel portale dopo la configurazione arrivano da soli.
 
 ## Installazione
 
@@ -34,67 +37,43 @@ aggiornamento, senza dover ricaricare l'integrazione.
 
 Copia la cartella `custom_components/sheltr` in `config/custom_components/` e riavvia Home Assistant.
 
+## Il token
+
+Nel portale, in uno dei due modi:
+
+- **Token dell'impianto** (consigliato): impianto → **Impostazioni → API dell'impianto → Attiva e
+  genera il token**. Vale solo per quell'impianto, con qualunque modalità dei gateway (**Direct** o
+  **API**), e non richiede un utente. Da lì si scarica anche la **guida API** dell'impianto.
+- **Token personale**: **Profilo → Token API → Nuovo token**. Ha i permessi dell'utente: vedi tutte le
+  sue case.
+
+Il token si vede una volta sola: copialo subito.
+
 ## Configurazione
 
-**Impostazioni → Dispositivi e servizi → Aggiungi integrazione → Sheltr Cloud**.
+**Impostazioni → Dispositivi e servizi → Aggiungi integrazione → Sheltr Cloud**:
 
-| Campo | Descrizione |
+| Campo | Esempio |
 |---|---|
-| URL del portale | `http://192.168.1.10:8080` oppure l'indirizzo HTTPS dietro reverse proxy |
-| ID impianto | l'istanza usata dal portale, cioè `<id>` in `/control/<id>` |
-| Username / Password | le stesse credenziali con cui accedi al controllo dell'istanza |
-| Token istanza | alternativa alle credenziali (`token` restituito da `/api/instances/<id>/auth/login`) |
-| Verifica certificato SSL | disattivalo solo con certificati self-signed |
+| Indirizzo del portale | `https://cloud.sheltr.it` (senza `https://` viene aggiunto) |
+| Token API | `shltr_…` |
 
-> Il token istanza ha vita limitata (`INSTANCE_AUTH_TTL_SEC`, 12 ore di default). Se inserisci
-> username e password l'integrazione rinnova il token da sola; con il solo token, alla scadenza
-> Home Assistant chiede di riautenticarsi.
+Se il token viene revocato o rigenerato nel portale, Home Assistant chiede di inserire quello nuovo.
 
-L'utente deve essere abilitato sull'impianto nel portale (Config → utenti), altrimenti il portale
-risponde `403` e la configurazione fallisce con «nessun permesso su questo impianto».
+## Come funziona
 
-## Opzioni
-
-**Impostazioni → Dispositivi e servizi → Sheltr Cloud → Configura**:
-
-- **Intervallo di lettura dello stato** (default 30 s): con che frequenza viene letto
-  `/api/instances/<id>/status`. È una lettura del database del portale, non genera traffico verso
-  il modulo.
-- **Intervallo di polling attivo dei moduli** (default 300 s): con che frequenza viene chiesto
-  `refresh=1`, cioè il polling MQTT reale dei moduli (comando `0x40`). Metti `0` per disattivarlo e
-  usare solo il pulsante **Aggiorna stato**: consigliato quando l'istanza è in *risparmio dati* su
-  SIM IoT, dove il portale limita comunque la frequenza dei refresh.
-- **Verifica lo stato del modulo dopo ogni comando** (default off): dopo ogni comando esegue il
-  polling mirato del modulo (`/poll`), come fa la UI del portale. Più affidabile, ma raddoppia i
-  frame sul bus.
-
-## Note di funzionamento
-
-- **Stato sconosciuto**: finché un modulo non risponde a un polling, le luci restano in stato
-  sconosciuto — il protocollo non ha uno stato retained.
-- **Tapparelle**: il protocollo espone solo su/giù/stop e nessuna posizione, quindi le entità
-  `cover` sono in *assumed state* e mostrano sempre entrambi i pulsanti.
-- **Termostati**: `power off` corrisponde al setpoint `0` sul modulo; l'azione
-  riscaldamento/raffrescamento deriva dal relè riportato dal polling.
-- **Dispositivo offline**: se l'istanza ha l'heartbeat configurato e il portale segnala il
-  dispositivo offline, le entità dei canali diventano non disponibili, come nella UI del portale.
+- All'avvio una lettura completa (`/api/homes`), poi gli aggiornamenti arrivano dal flusso in tempo
+  reale del portale (Mercure, Server-Sent Events); ogni 2 minuti una rilettura di sicurezza.
+- I comandi passano dalle stesse API dell'app del portale (`/api/channels/<id>/command`).
+- Un gateway offline rende non disponibili le sue entità.
+- Per i gateway in modalità **API** i canali hanno i nomi di default del portale: rinominali in Home
+  Assistant.
+- **Diagnostica** scaricabile dalla pagina dell'integrazione (senza il token).
 
 ## Sviluppo
 
-L'integrazione usa solo le API HTTP documentate nel
-[riferimento API](https://github.com/filippobenozzi/sheltr-cloud/blob/main/docs/wiki/API.md) del
-portale: `GET /api/instances/<id>`, `GET /api/instances/<id>/status`,
-`POST /api/instances/<id>/poll` e le rotte `.../{lights,dimmers,shutters,thermostats}/command`.
-Nessun accesso diretto a MQTT.
-
-Diagnostica scaricabile dalla pagina dell'integrazione (credenziali e token sono oscurati).
-
-Test e lint (portale simulato, nessuna installazione di Home Assistant necessaria):
-
 ```bash
-pip install -r requirements-test.txt ruff && ruff check . && pytest
+pip install -r requirements-test.txt ruff
+ruff check . && ruff format --check .
+pytest
 ```
-
-## Licenza
-
-MIT

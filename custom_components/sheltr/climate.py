@@ -1,4 +1,4 @@
-"""Termostati delle schede Sheltr."""
+"""Termostati: setpoint a mezzi gradi, stagione inverno (riscalda) / estate (raffresca)."""
 
 from __future__ import annotations
 
@@ -14,104 +14,90 @@ from homeassistant.const import ATTR_TEMPERATURE, UnitOfTemperature
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import (
-    KIND_THERMOSTAT,
-    MODE_SUMMER,
-    MODE_WINTER,
-    THERMOSTAT_MAX_TEMP,
-    THERMOSTAT_MIN_TEMP,
-    THERMOSTAT_TEMP_STEP,
-)
-from .coordinator import SheltrConfigEntry
-from .entity import SheltrEntity, async_setup_channel_entities
-
-PARALLEL_UPDATES = 0
+from . import SheltrConfigEntry
+from .entity import SheltrEntity, channels
 
 
 async def async_setup_entry(
-    hass: HomeAssistant,
-    entry: SheltrConfigEntry,
-    async_add_entities: AddEntitiesCallback,
+    hass: HomeAssistant, entry: SheltrConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
-    """Crea un termostato per ogni canale di tipo `thermostat`."""
-    async_setup_channel_entities(
-        entry.runtime_data,
-        entry,
-        async_add_entities,
-        (KIND_THERMOSTAT,),
-        SheltrClimate,
+    """Un termostato per ogni canale termostato."""
+    coordinator = entry.runtime_data
+    async_add_entities(
+        SheltrThermostat(coordinator, "channels", c) for c in channels(coordinator, "thermostat")
     )
 
 
-class SheltrClimate(SheltrEntity, ClimateEntity):
-    """Termostato: stagione inverno/estate mappata su riscaldamento/raffrescamento."""
+class SheltrThermostat(SheltrEntity, ClimateEntity):
+    """Termostato: inverno = riscaldamento, estate = raffrescamento, spento = setpoint 0."""
 
     _attr_temperature_unit = UnitOfTemperature.CELSIUS
-    _attr_hvac_modes = [HVACMode.OFF, HVACMode.HEAT, HVACMode.COOL]
-    _attr_min_temp = THERMOSTAT_MIN_TEMP
-    _attr_max_temp = THERMOSTAT_MAX_TEMP
-    _attr_target_temperature_step = THERMOSTAT_TEMP_STEP
+    _attr_hvac_modes = [HVACMode.HEAT, HVACMode.COOL, HVACMode.OFF]
     _attr_supported_features = (
         ClimateEntityFeature.TARGET_TEMPERATURE
         | ClimateEntityFeature.TURN_ON
         | ClimateEntityFeature.TURN_OFF
     )
-    _enable_turn_on_off_backwards_compatibility = False
+    _attr_min_temp = 5
+    _attr_max_temp = 30
+    _attr_target_temperature_step = 0.5
+
+    @property
+    def _state(self) -> dict[str, Any]:
+        item = self.item
+        return {} if item is None else item["state"]
 
     @property
     def current_temperature(self) -> float | None:
-        """Temperatura misurata dalla sonda del modulo."""
-        value = self.channel.get("temperature")
-        return float(value) if isinstance(value, (int, float)) else None
+        """Temperatura letta dal modulo."""
+        return self._state.get("temperature")
 
     @property
     def target_temperature(self) -> float | None:
-        """Setpoint impostato sul modulo."""
-        value = self.channel.get("setpoint")
-        return float(value) if isinstance(value, (int, float)) else None
+        """Setpoint."""
+        return self._state.get("setpoint")
 
     @property
     def hvac_mode(self) -> HVACMode | None:
-        """Spento, oppure riscaldamento (inverno) / raffrescamento (estate)."""
-        if self.channel.get("isOn") is False:
+        """Spento, oppure la stagione."""
+        state = self._state
+        if state.get("isOn") is False:
             return HVACMode.OFF
-        if self.channel.get("mode") == MODE_SUMMER:
-            return HVACMode.COOL
-        return HVACMode.HEAT
+        return HVACMode.COOL if state.get("mode") == "summer" else HVACMode.HEAT
 
     @property
     def hvac_action(self) -> HVACAction | None:
-        """Relè del termostato attivo o a riposo."""
-        if self.channel.get("isOn") is False:
+        """Dal relè del modulo: lavora o è fermo."""
+        state = self._state
+        if state.get("isOn") is False:
             return HVACAction.OFF
-        is_active = self.channel.get("isActive")
-        if not isinstance(is_active, bool):
+        if state.get("active") is None:
             return None
-        if not is_active:
+        if not state["active"]:
             return HVACAction.IDLE
-        return HVACAction.COOLING if self.channel.get("mode") == MODE_SUMMER else HVACAction.HEATING
+        return HVACAction.COOLING if state.get("mode") == "summer" else HVACAction.HEATING
 
     async def async_set_temperature(self, **kwargs: Any) -> None:
-        """Imposta il setpoint (accende il termostato se spento)."""
-        temperature = kwargs.get(ATTR_TEMPERATURE)
-        if temperature is None:
-            return
-        await self.coordinator.async_thermostat_command(
-            self._channel_id, setpoint=float(temperature)
-        )
+        """Nuovo setpoint (il portale lo arrotonda al mezzo grado)."""
+        if ATTR_TEMPERATURE in kwargs:
+            await self.coordinator.client.command(
+                self._item_id, {"setpoint": float(kwargs[ATTR_TEMPERATURE])}
+            )
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
-        """Cambia stagione o spegne il termostato."""
+        """Stagione (riaccendendolo se era spento) oppure spento."""
         if hvac_mode == HVACMode.OFF:
-            await self.coordinator.async_thermostat_command(self._channel_id, power=False)
+            await self.coordinator.client.command(self._item_id, {"action": "off"})
             return
-        mode = MODE_SUMMER if hvac_mode == HVACMode.COOL else MODE_WINTER
-        await self.coordinator.async_thermostat_command(self._channel_id, mode=mode, power=True)
+        body: dict[str, Any] = {"mode": "summer" if hvac_mode == HVACMode.COOL else "winter"}
+        if self._state.get("isOn") is False:
+            body["action"] = "on"
+        await self.coordinator.client.command(self._item_id, body)
 
     async def async_turn_on(self) -> None:
-        """Accende il termostato mantenendo la stagione corrente."""
-        await self.coordinator.async_thermostat_command(self._channel_id, power=True)
+        """Riaccende all'ultimo setpoint."""
+        await self.coordinator.client.command(self._item_id, {"action": "on"})
 
     async def async_turn_off(self) -> None:
-        """Spegne il termostato (setpoint a 0 sul modulo)."""
-        await self.coordinator.async_thermostat_command(self._channel_id, power=False)
+        """Spegne."""
+        await self.coordinator.client.command(self._item_id, {"action": "off"})
