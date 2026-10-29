@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from functools import partial
 import math
 from typing import Any
 
@@ -10,7 +12,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import SheltrConfigEntry
-from .entity import SheltrEntity, channels
+from .entity import SheltrEntity, channels, track_entities
 
 DIMMER_MAX = 9
 
@@ -18,13 +20,23 @@ DIMMER_MAX = 9
 async def async_setup_entry(
     hass: HomeAssistant, entry: SheltrConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
-    """Una luce per ogni canale luce o dimmer."""
+    """Una luce per ogni canale luce o dimmer (anche quelli aggiunti dopo)."""
     coordinator = entry.runtime_data
-    entities: list[LightEntity] = [
-        SheltrLight(coordinator, "channels", c) for c in channels(coordinator, "light")
-    ]
-    entities += [SheltrDimmer(coordinator, "channels", c) for c in channels(coordinator, "dimmer")]
-    async_add_entities(entities)
+
+    def build() -> dict[str, Callable[[], LightEntity]]:
+        found: dict[str, Callable[[], LightEntity]] = {
+            f"light-{c['id']}": partial(SheltrLight, coordinator, "channels", c)
+            for c in channels(coordinator, "light")
+        }
+        found.update(
+            {
+                f"dimmer-{c['id']}": partial(SheltrDimmer, coordinator, "channels", c)
+                for c in channels(coordinator, "dimmer")
+            }
+        )
+        return found
+
+    track_entities(coordinator, async_add_entities, build)
 
 
 class SheltrLight(SheltrEntity, LightEntity):

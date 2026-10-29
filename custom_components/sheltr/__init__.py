@@ -22,7 +22,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: SheltrConfigEntry) -> bo
     client = SheltrClient(
         async_get_clientsession(hass), entry.data[CONF_URL], entry.data[CONF_TOKEN]
     )
-    coordinator = SheltrCoordinator(hass, client)
+    coordinator = SheltrCoordinator(hass, entry, client)
     await coordinator.async_config_entry_first_refresh()
     entry.runtime_data = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)

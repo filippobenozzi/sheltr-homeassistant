@@ -34,7 +34,7 @@ from homeassistant.const import (
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 
-from .const import BASE_URL
+from .const import BASE_URL, channel
 
 
 def entity_id(hass: HomeAssistant, platform: str, unique_id: str) -> str:
@@ -56,20 +56,46 @@ async def call(hass: HomeAssistant, domain: str, service: str, target: str, **da
     await hass.services.async_call(domain, service, {ATTR_ENTITY_ID: target, **data}, blocking=True)
 
 
-async def test_entities_and_device(hass: HomeAssistant, setup_integration: MockConfigEntry) -> None:
-    """Ogni canale diventa un'entità del dispositivo del suo gateway, nella stanza del portale."""
+async def test_entities_grouped_by_module(
+    hass: HomeAssistant, setup_integration: MockConfigEntry
+) -> None:
+    """Ogni modulo è un dispositivo coi suoi canali, collegato al gateway, nella stanza del portale."""
     light = entity_id(hass, LIGHT_DOMAIN, "dr154-channels-b1-c1")
     assert hass.states.get(light).state == STATE_ON
-    assert hass.states.get(light).attributes["friendly_name"] == "Casa Demo · Quadro Lampadario"
+    assert hass.states.get(light).attributes["friendly_name"] == "Modulo light Lampadario"
 
     registry = dr.async_get(hass)
     devices = dr.async_entries_for_config_entry(registry, setup_integration.entry_id)
-    device = next(d for d in devices if (DOMAIN, "dr154") in d.identifiers)
-    assert (device.manufacturer, device.model, device.sw_version) == (
-        "Sheltr",
+    gateway = next(d for d in devices if (DOMAIN, "dr154") in d.identifiers)
+    assert (gateway.name, gateway.model, gateway.sw_version) == (
+        "Casa Demo · Quadro",
         "USR DR154",
         "V1.3.04",
     )
+    board = next(d for d in devices if (DOMAIN, "dr154-b1") in d.identifiers)
+    assert (board.name, board.model, board.via_device_id) == (
+        "Modulo light",
+        "Modulo luci · indirizzo 1",
+        gateway.id,
+    )
+    assert board.suggested_area == "Sala"
+    # Quattro moduli (uno per canale nei dati di prova) più il gateway.
+    assert len(devices) == 5
+    # Sequenze e ingressi stanno sul gateway.
+    button = er.async_get(hass).async_get(entity_id(hass, BUTTON_DOMAIN, "dr154-sequences-s1"))
+    assert button.device_id == gateway.id
+
+
+async def test_module_added_later_becomes_entities(
+    hass: HomeAssistant, setup_integration: MockConfigEntry
+) -> None:
+    """Un modulo aggiunto nel portale dopo la configurazione arriva senza ricaricare."""
+    coordinator = setup_integration.runtime_data
+    data = coordinator.data
+    data["casa1"]["channels"].append(channel(15, "b9-c1", "light", "Faretti", isOn=False))
+    coordinator.async_set_updated_data(data)
+    await hass.async_block_till_done()
+    assert hass.states.get(entity_id(hass, LIGHT_DOMAIN, "dr154-channels-b9-c1")).state == STATE_OFF
 
 
 async def test_light_and_dimmer(

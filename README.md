@@ -20,10 +20,14 @@ Bastano l'**indirizzo del portale** e un **token**.
 | Termostato | `climate` | setpoint 5–30 °C a mezzi gradi, inverno = riscaldamento, estate = raffrescamento, spento |
 | Sequenza (Sheltr ESP) | `button` | avvia |
 | Ingresso (Sheltr ESP) | `binary_sensor` | — |
+| Modulo (scheda sul bus) | dispositivo coi suoi canali, collegato al gateway | — |
 | Gateway (DR154, Sheltr ESP) | dispositivo, con un sensore di **collegamento** | — |
 
-Ogni gateway diventa un dispositivo di Home Assistant (*Impianto · Gateway*), con la stanza suggerita
-dal portale. I moduli aggiunti nel portale dopo la configurazione arrivano da soli.
+Gli elementi sono **raggruppati per modulo**: ogni scheda sul bus è un dispositivo di Home Assistant
+(nome del modulo, tipo e indirizzo), collegato al suo gateway (*Impianto · Gateway*; per un DR154 in
+modalità API solo il suo nome) e nella stanza dei suoi canali, se sono tutti nella stessa. Sequenze,
+ingressi e collegamento stanno sul gateway. I moduli aggiunti nel portale dopo la configurazione
+arrivano da soli, senza ricaricare.
 
 ## Installazione
 
@@ -39,13 +43,15 @@ Copia la cartella `custom_components/sheltr` in `config/custom_components/` e ri
 
 ## Il token
 
-Nel portale, in uno dei due modi:
+Nel portale, a seconda di cosa vuoi portare in Home Assistant:
 
-- **Token dell'impianto** (consigliato): impianto → **Impostazioni → API dell'impianto → Attiva e
-  genera il token**. Vale solo per quell'impianto, con qualunque modalità dei gateway (**Direct** o
-  **API**), e non richiede un utente. Da lì si scarica anche la **guida API** dell'impianto.
-- **Token personale**: **Profilo → Token API → Nuovo token**. Ha i permessi dell'utente: vedi tutte le
-  sue case.
+- **Un impianto** (gateway in modalità **Direct**): impianto → **Impostazioni → API dell'impianto →
+  Attiva e genera il token**. Vale solo per quell'impianto e non richiede un utente.
+- **Un DR154 in modalità API** (che non sta in un impianto: ha solo i suoi moduli): pagina del
+  dispositivo → **Impostazioni → Token API → Attiva e genera il token**.
+- **Tutto quello che vede un utente**: **Profilo → Token API → Nuovo token** (token personale).
+
+Da impianto e DR154 si scarica anche la **guida API** con le chiamate e i canali.
 
 Il token si vede una volta sola: copialo subito.
 

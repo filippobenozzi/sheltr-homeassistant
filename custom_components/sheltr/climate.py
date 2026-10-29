@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from functools import partial
 from typing import Any
 
 from homeassistant.components.climate import (
@@ -15,17 +17,22 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import SheltrConfigEntry
-from .entity import SheltrEntity, channels
+from .entity import SheltrEntity, channels, track_entities
 
 
 async def async_setup_entry(
     hass: HomeAssistant, entry: SheltrConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
-    """Un termostato per ogni canale termostato."""
+    """Un termostato per ogni canale termostato (anche quelli aggiunti dopo)."""
     coordinator = entry.runtime_data
-    async_add_entities(
-        SheltrThermostat(coordinator, "channels", c) for c in channels(coordinator, "thermostat")
-    )
+
+    def build() -> dict[str, Callable[[], ClimateEntity]]:
+        return {
+            f"thermostat-{c['id']}": partial(SheltrThermostat, coordinator, "channels", c)
+            for c in channels(coordinator, "thermostat")
+        }
+
+    track_entities(coordinator, async_add_entities, build)
 
 
 class SheltrThermostat(SheltrEntity, ClimateEntity):

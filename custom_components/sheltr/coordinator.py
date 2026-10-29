@@ -8,12 +8,15 @@ from datetime import timedelta
 import logging
 from typing import Any
 
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import SheltrAuthError, SheltrClient, SheltrError
 from .const import DOMAIN, SCAN_INTERVAL_SECONDS
+from .devices import device_info
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -21,10 +24,14 @@ _LOGGER = logging.getLogger(__name__)
 class SheltrCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
     """data = {id impianto: dettaglio come lo restituisce `/api/homes/<id>`}."""
 
-    def __init__(self, hass: HomeAssistant, client: SheltrClient) -> None:
+    def __init__(self, hass: HomeAssistant, entry: ConfigEntry, client: SheltrClient) -> None:
         """Coordinatore di un token (uno o più impianti)."""
         super().__init__(
-            hass, _LOGGER, name=DOMAIN, update_interval=timedelta(seconds=SCAN_INTERVAL_SECONDS)
+            hass,
+            _LOGGER,
+            config_entry=entry,
+            name=DOMAIN,
+            update_interval=timedelta(seconds=SCAN_INTERVAL_SECONDS),
         )
         self.client = client
         self.realtime = False
@@ -100,6 +107,15 @@ class SheltrCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         elif kind == "config":
             # Moduli o nomi cambiati: si rilegge tutto (una volta sola per raffica).
             self._schedule_refresh()
+
+    def gateway(self, home: dict[str, Any], device: dict[str, Any]) -> str | None:
+        """Il gateway nel registro dei dispositivi (creato se manca): i moduli vi si collegano."""
+        if self.config_entry is None:
+            return None
+        entry = dr.async_get(self.hass).async_get_or_create(
+            config_entry_id=self.config_entry.entry_id, **device_info(home, device)
+        )
+        return entry.id
 
     def find(self, collection: str, item_id: int) -> dict[str, Any] | None:
         """Un canale, una sequenza o un ingresso per id."""

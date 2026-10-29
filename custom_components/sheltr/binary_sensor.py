@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from functools import partial
 from typing import Any
 
 from homeassistant.components.binary_sensor import BinarySensorDeviceClass, BinarySensorEntity
@@ -12,7 +14,8 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import SheltrConfigEntry
 from .coordinator import SheltrCoordinator
-from .entity import SheltrEntity, device_info
+from .devices import device_info
+from .entity import SheltrEntity, track_entities
 
 
 async def async_setup_entry(
@@ -20,18 +23,20 @@ async def async_setup_entry(
 ) -> None:
     """Un sensore per ogni ingresso e uno di collegamento per ogni gateway."""
     coordinator = entry.runtime_data
-    entities: list[BinarySensorEntity] = [
-        SheltrInput(coordinator, "inputs", i)
-        for home in coordinator.data.values()
-        for i in home["inputs"]
-    ]
-    entities += [
-        SheltrConnectivity(coordinator, home, d)
-        for home in coordinator.data.values()
-        for d in home["devices"]
-        if d["claimed"]
-    ]
-    async_add_entities(entities)
+
+    def build() -> dict[str, Callable[[], BinarySensorEntity]]:
+        found: dict[str, Callable[[], BinarySensorEntity]] = {}
+        for home in coordinator.data.values():
+            for item in home["inputs"]:
+                found[f"input-{item['id']}"] = partial(SheltrInput, coordinator, "inputs", item)
+            for device in home["devices"]:
+                if device["claimed"]:
+                    found[f"gateway-{device['id']}"] = partial(
+                        SheltrConnectivity, coordinator, home, device
+                    )
+        return found
+
+    track_entities(coordinator, async_add_entities, build)
 
 
 class SheltrInput(SheltrEntity, BinarySensorEntity):

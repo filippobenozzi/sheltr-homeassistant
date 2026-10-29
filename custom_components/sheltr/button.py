@@ -2,24 +2,31 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from functools import partial
+
 from homeassistant.components.button import ButtonEntity
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import SheltrConfigEntry
-from .entity import SheltrEntity
+from .entity import SheltrEntity, track_entities
 
 
 async def async_setup_entry(
     hass: HomeAssistant, entry: SheltrConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
-    """Un pulsante per ogni sequenza."""
+    """Un pulsante per ogni sequenza (anche quelle aggiunte dopo)."""
     coordinator = entry.runtime_data
-    async_add_entities(
-        SheltrSequence(coordinator, "sequences", s)
-        for home in coordinator.data.values()
-        for s in home["sequences"]
-    )
+
+    def build() -> dict[str, Callable[[], ButtonEntity]]:
+        return {
+            f"sequence-{s['id']}": partial(SheltrSequence, coordinator, "sequences", s)
+            for home in coordinator.data.values()
+            for s in home["sequences"]
+        }
+
+    track_entities(coordinator, async_add_entities, build)
 
 
 class SheltrSequence(SheltrEntity, ButtonEntity):

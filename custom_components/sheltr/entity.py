@@ -1,34 +1,21 @@
-"""Base delle entità: un dispositivo Home Assistant per ogni gateway Sheltr."""
+"""Base delle entità: i canali nel loro modulo, sequenze e ingressi nel gateway."""
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
-from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.core import callback
+from homeassistant.helpers.entity import Entity
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN
 from .coordinator import SheltrCoordinator
-
-DEVICE_MODELS = {"esp": "Sheltr ESP", "usr": "USR DR154"}
-
-
-def device_info(
-    home: dict[str, Any], device: dict[str, Any], area: str | None = None
-) -> DeviceInfo:
-    """Dispositivo Home Assistant di un gateway, col nome dell'impianto."""
-    return DeviceInfo(
-        identifiers={(DOMAIN, device["id"])},
-        name=f"{home['name']} · {device.get('name', device['id'])}",
-        manufacturer="Sheltr",
-        model=DEVICE_MODELS.get(device.get("type", ""), "Sheltr"),
-        sw_version=device.get("firmware"),
-        suggested_area=area,
-    )
+from .devices import board_info, device_info
 
 
 class SheltrEntity(CoordinatorEntity[SheltrCoordinator]):
-    """Canale, sequenza o ingresso di un impianto."""
+    """Canale (nel suo modulo), sequenza o ingresso (nel gateway) di un impianto."""
 
     _attr_has_entity_name = True
 
@@ -43,10 +30,12 @@ class SheltrEntity(CoordinatorEntity[SheltrCoordinator]):
         device = next(
             (d for d in home["devices"] if d["id"] == item["deviceId"]), {"id": item["deviceId"]}
         )
-        room = next((r["name"] for r in home["rooms"] if r["id"] == item.get("roomId")), None)
         self._attr_unique_id = f"{item['deviceId']}-{collection}-{item.get('key', item['id'])}"
         self._attr_name = item["name"]
-        self._attr_device_info = device_info(home, device, room)
+        if collection == "channels":
+            self._attr_device_info = board_info(home, item, coordinator.gateway(home, device))
+        else:
+            self._attr_device_info = device_info(home, device)
 
     def _home_of(self, item: dict[str, Any]) -> dict[str, Any]:
         for home in self.coordinator.data.values():
@@ -69,3 +58,23 @@ class SheltrEntity(CoordinatorEntity[SheltrCoordinator]):
 def channels(coordinator: SheltrCoordinator, kind: str) -> list[dict[str, Any]]:
     """Canali di un tipo (`light`, `dimmer`, `shutter`, `thermostat`) di tutti gli impianti."""
     return [c for home in coordinator.data.values() for c in home["channels"] if c["kind"] == kind]
+
+
+def track_entities(
+    coordinator: SheltrCoordinator,
+    async_add_entities: AddEntitiesCallback,
+    build: Callable[[], dict[str, Callable[[], Entity]]],
+) -> None:
+    """Aggiunge le entità che ci sono e quelle dei moduli aggiunti dopo nel portale."""
+    known: set[str] = set()
+
+    @callback
+    def add_new() -> None:
+        new = {key: make for key, make in build().items() if key not in known}
+        if new:
+            known.update(new)
+            async_add_entities([make() for make in new.values()])
+
+    add_new()
+    if coordinator.config_entry is not None:
+        coordinator.config_entry.async_on_unload(coordinator.async_add_listener(add_new))
