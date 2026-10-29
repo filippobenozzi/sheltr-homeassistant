@@ -31,15 +31,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: SheltrConfigEntry) -> bo
 
 
 async def async_migrate_entry(hass: HomeAssistant, entry: SheltrConfigEntry) -> bool:
-    """Le voci della versione 1 (portale Sheltr precedente) non si convertono."""
+    """Versione 1: col portale precedente (ID impianto) si rifà; con indirizzo e token si aggiorna."""
     if entry.version < 2:
-        _LOGGER.error(
-            "%s: configurazione per il portale Sheltr precedente (ID impianto e credenziali). "
-            "Rimuovi l'integrazione e aggiungila di nuovo con l'indirizzo del portale e un token "
-            "(impianto → Impostazioni → API dell'impianto)",
-            entry.title,
-        )
-        return False
+        if (
+            "instance_id" in entry.data
+            or CONF_TOKEN not in entry.data
+            or CONF_URL not in entry.data
+        ):
+            _LOGGER.error(
+                "%s: configurazione per il portale Sheltr precedente (ID impianto e credenziali). "
+                "Rimuovi l'integrazione e aggiungila di nuovo con l'indirizzo del portale e un token "
+                "(impianto → Impostazioni → API dell'impianto)",
+                entry.title,
+            )
+            return False
+        hass.config_entries.async_update_entry(entry, version=2)
     return True
 
 
