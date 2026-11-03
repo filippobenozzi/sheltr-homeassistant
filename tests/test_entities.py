@@ -69,7 +69,7 @@ async def test_entities_grouped_by_module(
     gateway = next(d for d in devices if (DOMAIN, "dr154") in d.identifiers)
     assert (gateway.name, gateway.model, gateway.sw_version) == (
         "Casa Demo · Quadro",
-        "USR DR154",
+        "Cerebro Remote",
         "V1.3.04",
     )
     board = next(d for d in devices if (DOMAIN, "dr154-b1") in d.identifiers)

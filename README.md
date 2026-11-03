@@ -1,27 +1,27 @@
-# Sheltr Cloud per Home Assistant
+# Smart Domo Cerebro per Home Assistant
 
 Integrazione custom che porta in Home Assistant gli impianti di un portale
-[Sheltr Cloud](https://github.com/filippobenozzi/sheltr-cloud): luci, dimmer, tapparelle, termostati,
+[Smart Domo Cerebro](https://github.com/filippobenozzi/sheltr-cloud): luci, dimmer, tapparelle, termostati,
 sequenze e ingressi, comandabili come entità native e aggiornati **in tempo reale**.
 
 Bastano l'**indirizzo del portale** e un **token**.
 
-> **Versione 2.** Funziona col portale Sheltr Cloud 2 (token API). Le configurazioni fatte con la
+> **Versione 2.** Funziona col portale Smart Domo Cerebro (token API). Le configurazioni fatte con la
 > versione 1.x (portale precedente, con ID impianto e credenziali) non si convertono: rimuovi
 > l'integrazione e aggiungila di nuovo con indirizzo e token.
 
 ## Cosa viene creato
 
-| Sheltr | Home Assistant | Comandi |
+| Smart Domo Cerebro | Home Assistant | Comandi |
 |---|---|---|
 | Luce | `light` (on/off) | accendi, spegni |
 | Dimmer | `light` con luminosità | livelli 0–9 del bus su 0–255 |
 | Tapparella | `cover` (stato presunto) | su, giù, stop: il bus non dà la posizione |
 | Termostato | `climate` | setpoint 5–30 °C a mezzi gradi, inverno = riscaldamento, estate = raffrescamento, spento |
-| Sequenza (Sheltr ESP) | `button` | avvia |
-| Ingresso (Sheltr ESP) | `binary_sensor` | — |
+| Sequenza (Cerebro Lite) | `button` | avvia |
+| Ingresso (Cerebro Lite) | `binary_sensor` | — |
 | Modulo (scheda sul bus) | dispositivo coi suoi canali, collegato al gateway | — |
-| Gateway (DR154, Sheltr ESP) | dispositivo, con un sensore di **collegamento** | — |
+| Gateway (Cerebro Remote, Cerebro Lite) | dispositivo, con un sensore di **collegamento** | — |
 
 Gli elementi sono **raggruppati per modulo**: ogni scheda sul bus è un dispositivo di Home Assistant
 (nome del modulo, tipo e indirizzo), collegato al suo gateway (*Impianto · Gateway*; per un DR154 in
@@ -35,7 +35,7 @@ arrivano da soli, senza ricaricare.
 
 1. HACS → menu in alto a destra → **Custom repositories**.
 2. Repository: `https://github.com/filippobenozzi/sheltr-homeassistant`, categoria **Integration**.
-3. Installa **Sheltr Cloud** e riavvia Home Assistant.
+3. Installa **Smart Domo Cerebro** e riavvia Home Assistant.
 
 ### Manuale
 
@@ -57,7 +57,7 @@ Il token si vede una volta sola: copialo subito.
 
 ## Configurazione
 
-**Impostazioni → Dispositivi e servizi → Aggiungi integrazione → Sheltr Cloud**:
+**Impostazioni → Dispositivi e servizi → Aggiungi integrazione → Smart Domo Cerebro**:
 
 | Campo | Esempio |
 |---|---|

@@ -1,4 +1,4 @@
-"""Costanti dell'integrazione Sheltr Cloud."""
+"""Costanti dell'integrazione Smart Domo Cerebro."""
 
 DOMAIN = "sheltr"
 CONF_URL = "url"

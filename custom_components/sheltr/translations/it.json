@@ -2,8 +2,8 @@
   "config": {
     "step": {
       "user": {
-        "title": "Sheltr Cloud",
-        "description": "Indirizzo del portale Sheltr e un token: quello dell'impianto (impianto → Impostazioni → API dell'impianto) oppure uno personale (Profilo → Token API).",
+        "title": "Smart Domo Cerebro",
+        "description": "Indirizzo del portale Smart Domo Cerebro e un token: quello dell'impianto (impianto → Impostazioni → API dell'impianto) oppure uno personale (Profilo → Token API).",
         "data": {
           "url": "Indirizzo del portale",
           "token": "Token API"

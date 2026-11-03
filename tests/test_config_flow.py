@@ -25,7 +25,7 @@ async def test_user_flow_creates_entry(
         result["flow_id"], {CONF_URL: "cloud.example.com/", CONF_TOKEN: f" {TOKEN} "}
     )
     assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "Sheltr (API · Casa Demo)"
+    assert result["title"] == "Smart Domo Cerebro (API · Casa Demo)"
     assert result["data"] == {CONF_URL: BASE_URL, CONF_TOKEN: TOKEN}
     assert result["result"].unique_id == f"{BASE_URL}|{ME['id']}"
     # Il token viaggia come Authorization: Bearer.

@@ -1,4 +1,4 @@
-"""Dati di prova: un portale con un impianto, come lo descrivono le API di Sheltr Cloud."""
+"""Dati di prova: un portale con un impianto, come lo descrivono le API di Smart Domo Cerebro."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Client delle API di Sheltr Cloud (token dell'impianto o personale, `Authorization: Bearer`)."""
+"""Client delle API di Smart Domo Cerebro (token dell'impianto o personale, `Authorization: Bearer`)."""
 
 from __future__ import annotations
 

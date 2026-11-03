@@ -1,4 +1,4 @@
-"""Sheltr Cloud: luci, dimmer, tapparelle, termostati, sequenze e ingressi degli impianti Sheltr."""
+"""Smart Domo Cerebro: luci, dimmer, tapparelle, termostati, sequenze e ingressi degli impianti."""
 
 from __future__ import annotations
 
@@ -39,7 +39,7 @@ async def async_migrate_entry(hass: HomeAssistant, entry: SheltrConfigEntry) -> 
             or CONF_URL not in entry.data
         ):
             _LOGGER.error(
-                "%s: configurazione per il portale Sheltr precedente (ID impianto e credenziali). "
+                "%s: configurazione per il portale Smart Domo Cerebro precedente (ID impianto e credenziali). "
                 "Rimuovi l'integrazione e aggiungila di nuovo con l'indirizzo del portale e un token "
                 "(impianto → Impostazioni → API dell'impianto)",
                 entry.title,

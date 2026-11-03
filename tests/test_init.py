@@ -45,11 +45,11 @@ async def test_revoked_token_asks_for_a_new_one(
 async def test_version_1_with_url_and_token_is_upgraded(
     hass: HomeAssistant, mock_portal: AiohttpClientMocker
 ) -> None:
-    """Voce della prima integrazione per Sheltr Cloud 2 (indirizzo e token): si aggiorna e basta."""
+    """Voce della prima integrazione per Smart Domo Cerebro (indirizzo e token): si aggiorna e basta."""
     entry = MockConfigEntry(
         domain=DOMAIN,
         version=1,
-        title="Sheltr (API · Casa Demo)",
+        title="Smart Domo Cerebro (API · Casa Demo)",
         data={"url": "https://cloud.example.com", "token": "shltr_prova"},
     )
     entry.add_to_hass(hass)

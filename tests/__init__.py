@@ -1,1 +1,1 @@
-"""Test dell'integrazione Sheltr Cloud."""
+"""Test dell'integrazione Smart Domo Cerebro."""

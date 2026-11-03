@@ -1,4 +1,4 @@
-"""Fixture comuni ai test dell'integrazione Sheltr Cloud."""
+"""Fixture comuni ai test dell'integrazione Smart Domo Cerebro."""
 
 from __future__ import annotations
 
@@ -46,7 +46,7 @@ def config_entry() -> MockConfigEntry:
     return MockConfigEntry(
         domain=DOMAIN,
         version=2,
-        title="Sheltr (API · Casa Demo)",
+        title="Smart Domo Cerebro (API · Casa Demo)",
         data={CONF_URL: BASE_URL, CONF_TOKEN: TOKEN},
         unique_id=f"{BASE_URL}|{ME['id']}",
     )

@@ -1,4 +1,4 @@
-"""Dispositivi Home Assistant: un gateway per DR154 o Sheltr ESP, un modulo per scheda sul bus."""
+"""Dispositivi Home Assistant: un gateway per Cerebro Remote o Cerebro Lite, un modulo per scheda sul bus."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from homeassistant.helpers.device_registry import DeviceInfo
 
 from .const import DOMAIN
 
-DEVICE_MODELS = {"esp": "Sheltr ESP", "usr": "USR DR154"}
+DEVICE_MODELS = {"esp": "Cerebro Lite", "usr": "Cerebro Remote"}
 BOARD_MODELS = {
     "light": "Modulo luci",
     "dimmer": "Modulo dimmer",
@@ -26,8 +26,8 @@ def device_info(home: dict[str, Any], device: dict[str, Any]) -> DeviceInfo:
     return DeviceInfo(
         identifiers={(DOMAIN, device["id"])},
         name=name if home.get("internal") else f"{home['name']} · {name}",
-        manufacturer="Sheltr",
-        model=DEVICE_MODELS.get(device.get("type", ""), "Sheltr"),
+        manufacturer="Smart Domo Cerebro",
+        model=DEVICE_MODELS.get(device.get("type", ""), "Smart Domo Cerebro"),
         sw_version=device.get("firmware"),
     )
 
@@ -49,7 +49,7 @@ def board_info(home: dict[str, Any], channel: dict[str, Any], gateway_id: str | 
     info = DeviceInfo(
         identifiers={(DOMAIN, f"{channel['deviceId']}-{key}")},
         name=channel.get("boardName") or f"Modulo {address}",
-        manufacturer="Sheltr",
+        manufacturer="Smart Domo Cerebro",
         model=f"{BOARD_MODELS.get(channel['kind'], 'Modulo')} · indirizzo {address}",
         suggested_area=next((r["name"] for r in home["rooms"] if r["id"] == room_id), None),
     )

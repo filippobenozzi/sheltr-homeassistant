@@ -45,7 +45,7 @@ class SheltrConfigFlow(ConfigFlow, domain=DOMAIN):
                 await self.async_set_unique_id(f"{url}|{me['id']}")
                 self._abort_if_unique_id_configured()
                 return self.async_create_entry(
-                    title=f"Sheltr ({me['name']})",
+                    title=f"Smart Domo Cerebro ({me['name']})",
                     data={CONF_URL: url, CONF_TOKEN: token},
                 )
         return self.async_show_form(step_id="user", data_schema=SCHEMA, errors=errors)
